@@ -1,0 +1,219 @@
+"""
+מטפל קבלת קבצים - SRT ו-ZIP
+"""
+
+import os
+import logging
+import uuid
+from telegram import Update
+from telegram.ext import ContextTypes
+from config import TEMP_DIR
+from database.db_manager import get_user, is_approved
+from database.models import User
+from services.srt_processor import process_srt, CreditSettings
+from services.zip_handler import (
+    extract_srt_from_zip,
+    repack_to_zip,
+    is_valid_zip,
+    zip_contains_srt,
+)
+from utils.helpers import safe_delete
+from utils.keyboards import main_menu_keyboard
+
+logger = logging.getLogger(__name__)
+
+
+async def file_receiver_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """קבלת קבצים ועיבודם"""
+    user_id = update.effective_user.id
+
+    if not await is_approved(user_id):
+        await update.message.reply_text("❌ אין לך גישה לבוט. שלח /start לבקשת גישה.")
+        return
+
+    db_user = await get_user(user_id)
+    if not db_user or not db_user.setup_done:
+        await update.message.reply_text(
+            "⚠️ יש להשלים הגדרה ראשונית תחילה. שלח /start"
+        )
+        return
+
+    if not db_user.credit_text:
+        await update.message.reply_text(
+            "⚠️ טקסט הקרדיט לא הוגדר. עבור ל⚙️ הגדרות והגדר אותו."
+        )
+        return
+
+    doc = update.message.document
+    if not doc:
+        await update.message.reply_text("❌ לא זוהה קובץ. שלח קובץ .srt או .zip")
+        return
+
+    file_name = doc.file_name or "file"
+    is_zip = file_name.lower().endswith(".zip")
+    is_srt = file_name.lower().endswith(".srt")
+
+    if not is_zip and not is_srt:
+        await update.message.reply_text(
+            "❌ פורמט קובץ לא נתמך.\n"
+            "אני מקבל רק קבצי `.srt` או `.zip` המכילים כתוביות."
+        )
+        return
+
+    # שליפת הגדרות מותאמות אישית אם קיימות (מעבודה חד-פעמית)
+    custom = context.user_data.get("custom_settings")
+    settings = _build_settings(custom or db_user)
+
+    status_msg = await update.message.reply_text("⏳ מוריד קובץ...")
+
+    # הורדת הקובץ
+    job_id = str(uuid.uuid4())[:8]
+    temp_path = os.path.join(TEMP_DIR, f"{user_id}_{job_id}_{file_name}")
+
+    try:
+        tg_file = await doc.get_file()
+        await tg_file.download_to_drive(temp_path)
+        await status_msg.edit_text("⚙️ מעבד כתוביות...")
+
+        if is_srt:
+            output_path = await _process_single_srt(temp_path, settings, job_id, user_id)
+            out_name = f"processed_{file_name}"
+            await update.message.reply_document(
+                document=open(output_path, "rb"),
+                filename=out_name,
+                caption="✅ עיבוד הכתוביות הסתיים בהצלחה! 🎬",
+                reply_markup=main_menu_keyboard(),
+            )
+            safe_delete(output_path)
+
+        elif is_zip:
+            if not is_valid_zip(temp_path):
+                await status_msg.edit_text("❌ קובץ ZIP פגום.")
+                return
+
+            if not zip_contains_srt(temp_path):
+                await status_msg.edit_text("❌ ה-ZIP לא מכיל קבצי .srt")
+                return
+
+            output_zip_path = await _process_zip(temp_path, settings, job_id, user_id)
+            out_name = f"processed_{file_name}"
+            await update.message.reply_document(
+                document=open(output_zip_path, "rb"),
+                filename=out_name,
+                caption="✅ עיבוד כל הכתוביות הסתיים בהצלחה! 📦",
+                reply_markup=main_menu_keyboard(),
+            )
+            safe_delete(output_zip_path)
+
+        await status_msg.delete()
+
+    except ValueError as e:
+        await status_msg.edit_text(f"❌ שגיאה בעיבוד: {e}")
+    except Exception as e:
+        logger.error(f"שגיאה בעיבוד קובץ עבור {user_id}: {e}", exc_info=True)
+        await status_msg.edit_text(
+            "❌ אירעה שגיאה לא צפויה בעיבוד הקובץ. נסה שוב."
+        )
+    finally:
+        safe_delete(temp_path)
+        # ניקוי הגדרות חד-פעמיות אחרי שימוש
+        if "custom_settings" in context.user_data:
+            del context.user_data["custom_settings"]
+
+
+def _read_file_content(path: str) -> str:
+    """קריאת תוכן קובץ עם ניסיון זיהוי קידוד"""
+    try:
+        # ניסיון ראשון: UTF-8 (כולל BOM אם קיים)
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            # ניסיון שני: Windows-1255 (עברית)
+            with open(path, "r", encoding="windows-1255") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            # ניסיון אחרון: קריאה סלחנית
+            with open(path, "r", encoding="latin-1", errors="replace") as f:
+                return f.read()
+
+
+async def _process_single_srt(
+    srt_path: str, settings: CreditSettings, job_id: str, user_id: int
+) -> str:
+    """עיבוד קובץ SRT בודד"""
+    content = _read_file_content(srt_path)
+    processed = process_srt(content, settings)
+
+    output_path = os.path.join(TEMP_DIR, f"out_{user_id}_{job_id}.srt")
+    # שמירה כ-UTF-8 עם BOM
+    with open(output_path, "w", encoding="utf-8-sig") as f:
+        f.write(processed)
+
+    return output_path
+
+
+async def _process_zip(
+    zip_path: str, settings: CreditSettings, job_id: str, user_id: int
+) -> str:
+    """עיבוד ZIP המכיל קבצי SRT"""
+    extract_dir = os.path.join(TEMP_DIR, f"extract_{user_id}_{job_id}")
+    os.makedirs(extract_dir, exist_ok=True)
+
+    processed_files = []
+
+    try:
+        srt_files = extract_srt_from_zip(zip_path, extract_dir)
+
+        for srt_path in srt_files:
+            try:
+                content = _read_file_content(srt_path)
+                processed = process_srt(content, settings)
+
+                out_path = srt_path + ".processed.srt"
+                # שמירה כ-UTF-8 עם BOM
+                with open(out_path, "w", encoding="utf-8-sig") as f:
+                    f.write(processed)
+
+                arc_name = os.path.relpath(srt_path, extract_dir)
+                processed_files.append((out_path, arc_name))
+
+            except Exception as e:
+                logger.error(f"שגיאה בעיבוד {srt_path}: {e}")
+
+        output_zip = os.path.join(TEMP_DIR, f"out_{user_id}_{job_id}.zip")
+        repack_to_zip(processed_files, output_zip)
+        return output_zip
+
+    finally:
+        # ניקוי תיקיית חילוץ
+        import shutil
+        try:
+            shutil.rmtree(extract_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+
+def _build_settings(source) -> CreditSettings:
+    """בניית הגדרות עיבוד ממשתמש או מ-dict"""
+    if isinstance(source, dict):
+        return CreditSettings(
+            credit_text=source["credit_text"],
+            color=source["color"],
+            font=source["font"],
+            position=source["position"],
+            frequency=source["frequency"],
+            duration_start=source["duration_start"],
+            duration_middle=source["duration_middle"],
+            duration_end=source["duration_end"],
+        )
+    return CreditSettings(
+        credit_text=source.credit_text,
+        color=source.color,
+        font=source.font,
+        position=source.position,
+        frequency=source.frequency,
+        duration_start=source.duration_start,
+        duration_middle=source.duration_middle,
+        duration_end=source.duration_end,
+    )
