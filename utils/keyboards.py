@@ -71,6 +71,7 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("⏳ משך אמצע (שניות)", callback_data="edit_dur_middle")],
         [InlineKeyboardButton("⏳ משך סוף (שניות)", callback_data="edit_dur_end")],
         [InlineKeyboardButton("🎬 עיצוב כתוביות (פלט ASS)", callback_data="submenu_styling")],
+        [InlineKeyboardButton("📥 יבוא הגדרות (Import)", callback_data="style_import")],
         [InlineKeyboardButton("✅ סיום", callback_data="settings_done")],
     ])
 

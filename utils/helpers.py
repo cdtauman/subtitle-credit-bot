@@ -103,3 +103,116 @@ def format_user_styling_settings(user) -> str:
         f"👥 מרחק צל: `{user.shadow_width}` פיקסלים\n"
         f"🎨 צבע צל/רקע: `{user.bg_color}`\n"
     )
+
+
+def parse_style_string(text: str) -> dict:
+    """
+    מנתח שורת הגדרות סגנון (או פקודת FFmpeg) ומחזיר מילון של פרמטרים שזוהו.
+    למשל: FontName=Assistant,Fontsize=23,Bold=1,Shadow=0.1
+    """
+    import re
+    result = {}
+    
+    # תבנית של מפתח=ערך (תומך גם ברווחים ומירכאות)
+    pattern = re.compile(r'(\w+)\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^,\'"\s]+))')
+    
+    def parse_inner(text_to_parse):
+        matches = pattern.findall(text_to_parse)
+        for match in matches:
+            raw_key = match[0].lower()
+            val = match[1] or match[2] or match[3]
+            if not val:
+                continue
+            val = val.strip()
+            
+            # אם הערך הוא בעצמו תת-מערך של מפתח=ערך (כמו force_style='...'), ננתח אותו רקורסיבית
+            if "=" in val and raw_key in ("force_style", "style", "command", "vf"):
+                parse_inner(val)
+                continue
+                
+            # מיפוי פונט
+            if raw_key in ("fontname", "font"):
+                result["font"] = val
+                
+            # גודל גופן
+            elif raw_key in ("fontsize", "size"):
+                try:
+                    clean_val = re.sub(r'[^\d]', '', val)
+                    if clean_val:
+                        result["font_size"] = int(clean_val)
+                except ValueError:
+                    pass
+                    
+            # הדגשה (Bold)
+            elif raw_key == "bold":
+                try:
+                    if val.lower() in ("true", "1", "yes"):
+                        result["is_bold"] = 1
+                    elif val.lower() in ("false", "0", "no"):
+                        result["is_bold"] = 0
+                except ValueError:
+                    pass
+                    
+            # גבול (Outline)
+            elif raw_key in ("outline", "outlinewidth", "border"):
+                try:
+                    clean_val = re.sub(r'[^\d]', '', val)
+                    if clean_val:
+                        result["outline_width"] = int(clean_val)
+                except ValueError:
+                    pass
+                    
+            # צל (Shadow)
+            elif raw_key in ("shadow", "shadowwidth", "shadowx", "shadowy"):
+                try:
+                    f_val = float(val)
+                    result["shadow_width"] = int(round(f_val))
+                except ValueError:
+                    pass
+                    
+            # סגנון גבול (BorderStyle)
+            elif raw_key in ("borderstyle", "style"):
+                try:
+                    clean_val = re.sub(r'[^\d]', '', val)
+                    if clean_val:
+                        result["border_style"] = int(clean_val)
+                except ValueError:
+                    pass
+                    
+            # צבעים
+            elif raw_key in ("primarycolour", "colour", "color"):
+                if val.startswith("&H"):
+                    hex_clean = val.replace("&H", "").replace("&", "")
+                    if len(hex_clean) >= 6:
+                        bb = hex_clean[-6:-4]
+                        gg = hex_clean[-4:-2]
+                        rr = hex_clean[-2:]
+                        result["color"] = f"#{rr}{gg}{bb}"
+                elif val.startswith("#"):
+                    result["color"] = val
+                    
+            elif raw_key == "outlinecolour":
+                if val.startswith("&H"):
+                    hex_clean = val.replace("&H", "").replace("&", "")
+                    if len(hex_clean) >= 6:
+                        bb = hex_clean[-6:-4]
+                        gg = hex_clean[-4:-2]
+                        rr = hex_clean[-2:]
+                        result["outline_color"] = f"#{rr}{gg}{bb}"
+                elif val.startswith("#"):
+                    result["outline_color"] = val
+                    
+            elif raw_key in ("backcolour", "bgcolor"):
+                if val.startswith("&H"):
+                    hex_clean = val.replace("&H", "").replace("&", "")
+                    if len(hex_clean) >= 6:
+                        bb = hex_clean[-6:-4]
+                        gg = hex_clean[-4:-2]
+                        rr = hex_clean[-2:]
+                        result["bg_color"] = f"#{rr}{gg}{bb}"
+                elif val.startswith("#"):
+                    result["bg_color"] = val
+
+    parse_inner(text)
+    return result
+

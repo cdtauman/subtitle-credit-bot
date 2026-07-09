@@ -30,6 +30,7 @@ from utils.helpers import (
     format_user_settings,
     create_color_image,
     format_user_styling_settings,
+    parse_style_string,
 )
 from services.preview_generator import generate_subtitle_preview
 
@@ -59,7 +60,8 @@ logger = logging.getLogger(__name__)
     EDIT_BG_COLOR,
     EDIT_BG_COLOR_CUSTOM,
     EDIT_IS_BOLD,
-) = range(100, 121)
+    EDIT_IMPORT,
+) = range(100, 122)
 
 
 async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,6 +139,12 @@ async def settings_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
         "edit_dur_middle": ("⏳ הזן משך קרדיט אמצע (שניות, 1-30):", EDIT_DUR_MIDDLE),
         "edit_dur_end": ("⏳ הזן משך קרדיט סיום (שניות, 1-30):", EDIT_DUR_END),
         "edit_output_format": ("📁 בחר פורמט קובץ פלט חדש:", EDIT_OUTPUT_FORMAT),
+        "style_import": (
+            "📥 *ייבוא הגדרות עיצוב (Import Settings)*\n\n"
+            "שלח לי את שורת הסגנון של ה-ASS או את פקודת ה-FFmpeg המכילה את סגנון ה-force_style:\n"
+            "_(למשל: FontName=Assistant,Fontsize=23,Bold=1,Shadow=0.1)_",
+            EDIT_IMPORT
+        ),
     }
 
     if action not in prompts:
@@ -157,7 +165,11 @@ async def settings_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text(prompt, reply_markup=format_keyboard())
         return EDIT_OUTPUT_FORMAT
     else:
-        await query.edit_message_text(prompt)
+        # style_import prompt needs markdown parsing
+        if action == "style_import":
+            await query.edit_message_text(prompt, parse_mode="Markdown")
+        else:
+            await query.edit_message_text(prompt)
         return state
 
 
@@ -398,6 +410,53 @@ async def edit_is_bold_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return await submenu_styling_handler(update, context)
 
 
+async def edit_import_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if not text:
+        await update.message.reply_text("❌ הטקסט לא תקין. נסה שוב:")
+        return EDIT_IMPORT
+        
+    parsed = parse_style_string(text)
+    if not parsed:
+        await update.message.reply_text(
+            "❌ לא זוהו הגדרות תקינות בטקסט ששלחת.\n"
+            "ודא ששלחת טקסט המכיל הגדרות בפורמט `Key=Value` (למשל: `FontName=Assistant,Fontsize=23...`) ונסה שוב:"
+        )
+        return EDIT_IMPORT
+        
+    user_id = update.effective_user.id
+    await update_user_settings(user_id, **parsed)
+    
+    labels = {
+        "font": "🔤 גופן",
+        "font_size": "📏 גודל גופן",
+        "is_bold": "🅰️ הדגשה",
+        "outline_width": "➖ עובי גבול",
+        "shadow_width": "👥 מרחק צל",
+        "border_style": "🔳 סגנון גבול",
+        "color": "🎨 צבע ראשי",
+        "outline_color": "🎨 צבע גבול/קופסה",
+        "bg_color": "🎨 צבע רקע/צל"
+    }
+    
+    lines = []
+    for k, v in parsed.items():
+        label = labels.get(k, k)
+        if k == "is_bold":
+            val_str = "מודגש (Bold)" if v == 1 else "רגיל"
+        elif k == "border_style":
+            val_str = "צל + גבול" if v == 1 else "קופסה כהה"
+        else:
+            val_str = str(v)
+        lines.append(f"- *{label}:* `{val_str}`")
+        
+    await update.message.reply_text(
+        f"✅ *ההגדרות יובאו ועודכנו בהצלחה!*\n\n" + "\n".join(lines),
+        parse_mode="Markdown"
+    )
+    return await settings_handler(update, context)
+
+
 async def edit_outline_color_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -555,6 +614,9 @@ def settings_conversation_handler() -> ConversationHandler:
             ],
             EDIT_IS_BOLD: [
                 CallbackQueryHandler(edit_is_bold_callback, pattern=r"^bold_")
+            ],
+            EDIT_IMPORT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, edit_import_callback)
             ],
         },
         fallbacks=[
