@@ -553,7 +553,7 @@ def settings_conversation_handler() -> ConversationHandler:
         ],
         states={
             SETTINGS_MENU: [
-                CallbackQueryHandler(settings_menu_callback, pattern=r"^(edit_|settings_done|submenu_styling)")
+                CallbackQueryHandler(settings_menu_callback, pattern=r"^(edit_|settings_done|submenu_styling|style_)")
             ],
             EDIT_CREDIT_TEXT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, edit_credit_text)
