@@ -21,6 +21,7 @@ from utils.keyboards import (
     font_keyboard,
     position_keyboard,
     admin_approval_keyboard,
+    format_keyboard,
 )
 from utils.helpers import normalize_hex_color, safe_int
 
@@ -37,7 +38,8 @@ logger = logging.getLogger(__name__)
     WAITING_DURATION_START,
     WAITING_DURATION_MIDDLE,
     WAITING_DURATION_END,
-) = range(9)
+    WAITING_OUTPUT_FORMAT,
+) = range(10)
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -129,7 +131,7 @@ async def _start_setup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎉 *ברוך הבא! בוא נגדיר את הגדרות ברירת המחדל שלך.*\n\n"
         "הגדרות אלו ישמשו לכל עיבוד אוטומטי של קבצים.\n\n"
-        "📝 *שלב 1/8 - טקסט הקרדיט:*\n"
+        "📝 *שלב 1/9 - טקסט הקרדיט:*\n"
         "הכנס את הטקסט שיופיע כקרדיט בכתוביות:\n"
         "_(לדוגמה: תרגום: צוות אריאל)_",
         parse_mode="Markdown",
@@ -146,7 +148,7 @@ async def setup_got_credit_text(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["setup_credit_text"] = credit_text
     await update.message.reply_text(
         "✅ נשמר!\n\n"
-        "🎨 *שלב 2/8 - צבע הקרדיט:*\n"
+        "🎨 *שלב 2/9 - צבע הקרדיט:*\n"
         "בחר צבע מהרשימה או הזן קוד HEX מותאם:",
         parse_mode="Markdown",
         reply_markup=color_keyboard(),
@@ -168,7 +170,7 @@ async def setup_got_color_callback(update: Update, context: ContextTypes.DEFAULT
     context.user_data["setup_color"] = color
     await query.edit_message_text(f"✅ צבע נבחר: `{color}`", parse_mode="Markdown")
     await query.message.reply_text(
-        "🔤 *שלב 3/8 - גופן:*\n"
+        "🔤 *שלב 3/9 - גופן:*\n"
         "בחר גופן מהרשימה:",
         parse_mode="Markdown",
         reply_markup=font_keyboard(),
@@ -187,7 +189,7 @@ async def setup_got_color_custom(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data["setup_color"] = color
     await update.message.reply_text(
         f"✅ צבע נבחר: `{color}`\n\n"
-        "🔤 *שלב 3/8 - גופן:*\n"
+        "🔤 *שלב 3/9 - גופן:*\n"
         "בחר גופן מהרשימה:",
         parse_mode="Markdown",
         reply_markup=font_keyboard(),
@@ -202,7 +204,7 @@ async def setup_got_font(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["setup_font"] = font
     await query.edit_message_text(f"✅ גופן נבחר: {font}")
     await query.message.reply_text(
-        "📍 *שלב 4/8 - מיקום:*\n"
+        "📍 *שלב 4/9 - מיקום:*\n"
         "איפה יוצג הקרדיט?",
         parse_mode="Markdown",
         reply_markup=position_keyboard(),
@@ -218,7 +220,22 @@ async def setup_got_position(update: Update, context: ContextTypes.DEFAULT_TYPE)
     pos_label = "🔼 למעלה" if position == "top" else "🔽 למטה"
     await query.edit_message_text(f"✅ מיקום נבחר: {pos_label}")
     await query.message.reply_text(
-        "⏱️ *שלב 5/8 - תדירות:*\n"
+        "📁 *שלב 5/9 - פורמט קובץ פלט:*\n"
+        "בחר את סיומת קובץ הפלט המועדפת עליך:",
+        parse_mode="Markdown",
+        reply_markup=format_keyboard(),
+    )
+    return WAITING_OUTPUT_FORMAT
+
+
+async def setup_got_output_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    fmt = query.data.replace("format_", "")
+    context.user_data["setup_output_format"] = fmt
+    await query.edit_message_text(f"✅ פורמט נבחר: {fmt.upper()}")
+    await query.message.reply_text(
+        "⏱️ *שלב 6/9 - תדירות:*\n"
         "כל כמה דקות יופיע הקרדיט באמצע הסרט?\n"
         "_(הזן מספר בין 0 ל-60. 0 = ללא קרדיט אמצע)_",
         parse_mode="Markdown",
@@ -234,7 +251,7 @@ async def setup_got_frequency(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     context.user_data["setup_frequency"] = freq
     await update.message.reply_text(
-        "⏳ *שלב 6/8 - משך קרדיט פתיחה:*\n"
+        "⏳ *שלב 7/9 - משך קרדיט פתיחה:*\n"
         "כמה שניות יוצג הקרדיט בתחילת הסרט?\n"
         "_(הזן מספר שניות בין 1 ל-30)_",
         parse_mode="Markdown",
@@ -254,7 +271,7 @@ async def setup_got_duration_start(update: Update, context: ContextTypes.DEFAULT
     if context.user_data.get("setup_frequency") == 0:
         context.user_data["setup_duration_middle"] = 0
         await update.message.reply_text(
-            "⏳ *שלב 8/8 - משך קרדיט סיום:*\n"
+            "⏳ *שלב 9/9 - משך קרדיט סיום:*\n"
             "כמה שניות יוצג הקרדיט בסוף הסרט?\n"
             "_(הזן מספר שניות בין 1 ל-30)_",
             parse_mode="Markdown",
@@ -262,7 +279,7 @@ async def setup_got_duration_start(update: Update, context: ContextTypes.DEFAULT
         return WAITING_DURATION_END
 
     await update.message.reply_text(
-        "⏳ *שלב 7/8 - משך קרדיט אמצע:*\n"
+        "⏳ *שלב 8/9 - משך קרדיט אמצע:*\n"
         "כמה שניות יוצג כל קרדיט באמצע הסרט?\n"
         "_(הזן מספר שניות בין 1 ל-30)_",
         parse_mode="Markdown",
@@ -278,7 +295,7 @@ async def setup_got_duration_middle(update: Update, context: ContextTypes.DEFAUL
 
     context.user_data["setup_duration_middle"] = dur
     await update.message.reply_text(
-        "⏳ *שלב 8/8 - משך קרדיט סיום:*\n"
+        "⏳ *שלב 9/9 - משך קרדיט סיום:*\n"
         "כמה שניות יוצג הקרדיט בסוף הסרט?\n"
         "_(הזן מספר שניות בין 1 ל-30)_",
         parse_mode="Markdown",
@@ -305,6 +322,7 @@ async def setup_got_duration_end(update: Update, context: ContextTypes.DEFAULT_T
         color=data["setup_color"],
         font=data["setup_font"],
         position=data["setup_position"],
+        output_format=data.get("setup_output_format", "srt"),
         frequency=data["setup_frequency"],
         duration_start=data["setup_duration_start"],
         duration_middle=data.get("setup_duration_middle", 0),
@@ -401,6 +419,9 @@ def setup_conversation_handler() -> ConversationHandler:
             ],
             WAITING_POSITION: [
                 CallbackQueryHandler(setup_got_position, pattern=r"^position_")
+            ],
+            WAITING_OUTPUT_FORMAT: [
+                CallbackQueryHandler(setup_got_output_format, pattern=r"^format_")
             ],
             WAITING_FREQUENCY: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, setup_got_frequency)

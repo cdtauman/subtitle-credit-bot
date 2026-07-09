@@ -26,15 +26,41 @@ async def init_db() -> None:
                 is_admin        INTEGER NOT NULL DEFAULT 0,
                 credit_text     TEXT,
                 color           TEXT NOT NULL DEFAULT '#FFFFFF',
-                font            TEXT NOT NULL DEFAULT 'Arial',
+                font            TEXT NOT NULL DEFAULT 'Assistant',
                 position        TEXT NOT NULL DEFAULT 'bottom',
                 frequency       INTEGER NOT NULL DEFAULT 10,
                 duration_start  INTEGER NOT NULL DEFAULT 5,
                 duration_middle INTEGER NOT NULL DEFAULT 5,
                 duration_end    INTEGER NOT NULL DEFAULT 5,
-                setup_done      INTEGER NOT NULL DEFAULT 0
+                setup_done      INTEGER NOT NULL DEFAULT 0,
+                output_format   TEXT NOT NULL DEFAULT 'srt',
+                font_size       INTEGER NOT NULL DEFAULT 23,
+                border_style    INTEGER NOT NULL DEFAULT 1,
+                outline_color   TEXT NOT NULL DEFAULT '#000000',
+                outline_width   INTEGER NOT NULL DEFAULT 2,
+                shadow_width    INTEGER NOT NULL DEFAULT 0,
+                bg_color        TEXT NOT NULL DEFAULT '#000000',
+                is_bold         INTEGER NOT NULL DEFAULT 1
             )
         """)
+
+        # הוספת עמודות חדשות אם לא קיימות (לתאימות לאחור)
+        cols_to_add = {
+            "output_format": "TEXT NOT NULL DEFAULT 'srt'",
+            "font_size": "INTEGER NOT NULL DEFAULT 23",
+            "border_style": "INTEGER NOT NULL DEFAULT 1",
+            "outline_color": "TEXT NOT NULL DEFAULT '#000000'",
+            "outline_width": "INTEGER NOT NULL DEFAULT 2",
+            "shadow_width": "INTEGER NOT NULL DEFAULT 0",
+            "bg_color": "TEXT NOT NULL DEFAULT '#000000'",
+            "is_bold": "INTEGER NOT NULL DEFAULT 1"
+        }
+        for col, definition in cols_to_add.items():
+            try:
+                await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+                await db.commit()
+            except aiosqlite.OperationalError:
+                pass
         
         # טבלת סטטיסטיקות
         await db.execute("""
@@ -45,6 +71,11 @@ async def init_db() -> None:
         """)
         # אתחול מונה קבצים אם לא קיים
         await db.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('processed_files', 0)")
+        
+        # עדכון משתמשים קיימים שהיו עם ערכי ברירת המחדל הישנים לערכים החדשים המומלצים
+        await db.execute("UPDATE users SET font = 'Assistant' WHERE font = 'Arial'")
+        await db.execute("UPDATE users SET font_size = 23 WHERE font_size = 20")
+        await db.execute("UPDATE users SET shadow_width = 0 WHERE shadow_width = 2")
         
         await db.commit()
 
@@ -90,8 +121,9 @@ async def upsert_user(user: User) -> None:
             INSERT INTO users (
                 user_id, username, full_name, is_approved, is_banned, is_admin,
                 credit_text, color, font, position, frequency,
-                duration_start, duration_middle, duration_end, setup_done
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                duration_start, duration_middle, duration_end, setup_done, output_format,
+                font_size, border_style, outline_color, outline_width, shadow_width, bg_color, is_bold
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(user_id) DO UPDATE SET
                 username        = excluded.username,
                 full_name       = excluded.full_name,
@@ -106,13 +138,23 @@ async def upsert_user(user: User) -> None:
                 duration_start  = excluded.duration_start,
                 duration_middle = excluded.duration_middle,
                 duration_end    = excluded.duration_end,
-                setup_done      = excluded.setup_done
+                setup_done      = excluded.setup_done,
+                output_format   = excluded.output_format,
+                font_size       = excluded.font_size,
+                border_style    = excluded.border_style,
+                outline_color   = excluded.outline_color,
+                outline_width   = excluded.outline_width,
+                shadow_width    = excluded.shadow_width,
+                bg_color        = excluded.bg_color,
+                is_bold         = excluded.is_bold
         """, (
             user.user_id, user.username, user.full_name,
             int(user.is_approved), int(user.is_banned), int(user.is_admin),
             user.credit_text, user.color, user.font, user.position,
             user.frequency, user.duration_start, user.duration_middle,
-            user.duration_end, int(user.setup_done),
+            user.duration_end, int(user.setup_done), user.output_format,
+            user.font_size, user.border_style, user.outline_color,
+            user.outline_width, user.shadow_width, user.bg_color, user.is_bold
         ))
         await db.commit()
 
@@ -125,7 +167,9 @@ async def update_user_settings(user_id: int, **kwargs) -> None:
         "credit_text", "color", "font", "position", "frequency",
         "duration_start", "duration_middle", "duration_end",
         "is_approved", "is_banned", "is_admin", "setup_done",
-        "username", "full_name",
+        "username", "full_name", "output_format",
+        "font_size", "border_style", "outline_color",
+        "outline_width", "shadow_width", "bg_color", "is_bold",
     }
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
@@ -209,4 +253,12 @@ def _row_to_user(row: aiosqlite.Row) -> User:
         duration_middle=row["duration_middle"],
         duration_end=row["duration_end"],
         setup_done=bool(row["setup_done"]),
+        output_format=row["output_format"] if "output_format" in row.keys() else "srt",
+        font_size=row["font_size"] if "font_size" in row.keys() else 23,
+        border_style=row["border_style"] if "border_style" in row.keys() else 1,
+        outline_color=row["outline_color"] if "outline_color" in row.keys() else "#000000",
+        outline_width=row["outline_width"] if "outline_width" in row.keys() else 2,
+        shadow_width=row["shadow_width"] if "shadow_width" in row.keys() else 0,
+        bg_color=row["bg_color"] if "bg_color" in row.keys() else "#000000",
+        is_bold=row["is_bold"] if "is_bold" in row.keys() else 1,
     )

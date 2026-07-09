@@ -77,7 +77,8 @@ async def file_receiver_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         if is_srt:
             output_path = await _process_single_srt(temp_path, settings, job_id, user_id)
-            out_name = f"processed_{file_name}"
+            base_name, _ = os.path.splitext(file_name)
+            out_name = f"processed_{base_name}.{settings.output_format}"
             await update.message.reply_document(
                 document=open(output_path, "rb"),
                 filename=out_name,
@@ -145,7 +146,7 @@ async def _process_single_srt(
     content = _read_file_content(srt_path)
     processed = process_srt(content, settings)
 
-    output_path = os.path.join(TEMP_DIR, f"out_{user_id}_{job_id}.srt")
+    output_path = os.path.join(TEMP_DIR, f"out_{user_id}_{job_id}.{settings.output_format}")
     # שמירה כ-UTF-8 עם BOM
     with open(output_path, "w", encoding="utf-8-sig") as f:
         f.write(processed)
@@ -170,12 +171,14 @@ async def _process_zip(
                 content = _read_file_content(srt_path)
                 processed = process_srt(content, settings)
 
-                out_path = srt_path + ".processed.srt"
+                base_path, _ = os.path.splitext(srt_path)
+                out_path = base_path + f".processed.{settings.output_format}"
                 # שמירה כ-UTF-8 עם BOM
                 with open(out_path, "w", encoding="utf-8-sig") as f:
                     f.write(processed)
 
-                arc_name = os.path.relpath(srt_path, extract_dir)
+                rel_base, _ = os.path.splitext(os.path.relpath(srt_path, extract_dir))
+                arc_name = f"{rel_base}.{settings.output_format}"
                 processed_files.append((out_path, arc_name))
 
             except Exception as e:
@@ -206,6 +209,14 @@ def _build_settings(source) -> CreditSettings:
             duration_start=source["duration_start"],
             duration_middle=source["duration_middle"],
             duration_end=source["duration_end"],
+            output_format=source.get("output_format", "srt"),
+            font_size=source.get("font_size", 20),
+            border_style=source.get("border_style", 1),
+            outline_color=source.get("outline_color", "#000000"),
+            outline_width=source.get("outline_width", 2),
+            shadow_width=source.get("shadow_width", 2),
+            bg_color=source.get("bg_color", "#000000"),
+            is_bold=source.get("is_bold", 1),
         )
     return CreditSettings(
         credit_text=source.credit_text,
@@ -216,4 +227,12 @@ def _build_settings(source) -> CreditSettings:
         duration_start=source.duration_start,
         duration_middle=source.duration_middle,
         duration_end=source.duration_end,
+        output_format=getattr(source, "output_format", "srt"),
+        font_size=getattr(source, "font_size", 20),
+        border_style=getattr(source, "border_style", 1),
+        outline_color=getattr(source, "outline_color", "#000000"),
+        outline_width=getattr(source, "outline_width", 2),
+        shadow_width=getattr(source, "shadow_width", 2),
+        bg_color=getattr(source, "bg_color", "#000000"),
+        is_bold=getattr(source, "is_bold", 1),
     )

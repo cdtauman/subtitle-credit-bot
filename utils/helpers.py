@@ -51,12 +51,14 @@ def safe_int(value: str, min_val: int = 1, max_val: int = 9999) -> Optional[int]
 def format_user_settings(user) -> str:
     """פורמט הגדרות משתמש להצגה"""
     pos_label = "🔼 למעלה" if user.position == "top" else "🔽 למטה"
+    fmt_label = user.output_format.upper() if hasattr(user, 'output_format') else "SRT"
     return (
         f"📋 *ההגדרות הנוכחיות שלך:*\n\n"
         f"📝 טקסט: `{user.credit_text or 'לא הוגדר'}`\n"
         f"🎨 צבע: `{user.color}`\n"
         f"🔤 גופן: `{user.font}`\n"
         f"📍 מיקום: {pos_label}\n"
+        f"📁 פורמט פלט: `{fmt_label}`\n"
         f"⏱️ תדירות: כל `{user.frequency}` דקות\n"
         f"⏳ משך התחלה: `{user.duration_start}` שניות\n"
         f"⏳ משך אמצע: `{user.duration_middle}` שניות\n"
@@ -85,3 +87,19 @@ def create_color_image(hex_color: str) -> io.BytesIO:
         img.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
         return img_byte_arr
+
+
+def format_user_styling_settings(user) -> str:
+    """פורמט הגדרות עיצוב כתוביות להצגה"""
+    border_label = "צל + גבול 🔳" if user.border_style == 1 else "קופסה כהה ⬛"
+    bold_label = "מודגש (Bold) 🅰️" if getattr(user, "is_bold", 1) == 1 else "רגיל 📄"
+    return (
+        f"🎨 *הגדרות עיצוב הכתוביות שלך (לפורמט ASS):*\n\n"
+        f"📏 גודל גופן: `{user.font_size}`\n"
+        f"🔳 סגנון גבול: {border_label}\n"
+        f"🅰️ הדגשת גופן: {bold_label}\n"
+        f"🎨 צבע גבול/קופסה: `{user.outline_color}`\n"
+        f"➖ עובי גבול: `{user.outline_width}` פיקסלים\n"
+        f"👥 מרחק צל: `{user.shadow_width}` פיקסלים\n"
+        f"🎨 צבע צל/רקע: `{user.bg_color}`\n"
+    )

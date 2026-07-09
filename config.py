@@ -34,13 +34,14 @@ DEFAULT_DURATION_END = 20  # שניות
 
 # רשימת גופנים זמינים
 AVAILABLE_FONTS = [
+    "Assistant",
+    "Rubik",
+    "Secular One",
+    "David",
     "Arial",
-    "Times New Roman",
-    "Courier New",
     "Verdana",
     "Tahoma",
-    "Georgia",
-    "Trebuchet MS",
+    "Times New Roman",
 ]
 
 # רשימת צבעים מהירים

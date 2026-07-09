@@ -31,6 +31,15 @@ class CreditSettings:
     duration_start: int     # שניות
     duration_middle: int    # שניות
     duration_end: int       # שניות
+    output_format: str = "srt"  # "srt" / "ass" / "vtt"
+    # עיצוב כתוביות מתקדם (ASS)
+    font_size: int = 20
+    border_style: int = 1
+    outline_color: str = "#000000"
+    outline_width: int = 2
+    shadow_width: int = 2
+    bg_color: str = "#000000"
+    is_bold: int = 1
 
 
 def _td_to_srt_time(td: timedelta) -> str:
@@ -228,7 +237,13 @@ def process_srt(content: str, settings: CreditSettings) -> str:
     for i, block in enumerate(all_blocks, start=1):
         block.index = i
 
-    return _serialize_srt(all_blocks)
+    fmt = settings.output_format.lower()
+    if fmt == "ass":
+        return _serialize_ass(all_blocks, settings)
+    elif fmt == "vtt":
+        return _serialize_vtt(all_blocks)
+    else:
+        return _serialize_srt(all_blocks)
 
 
 def _serialize_srt(blocks: List[SRTBlock]) -> str:
@@ -240,3 +255,137 @@ def _serialize_srt(blocks: List[SRTBlock]) -> str:
         lines.append(block.text)
         lines.append("")
     return "\n".join(lines)
+
+
+def _td_to_vtt_time(td: timedelta) -> str:
+    """המרת timedelta לפורמט WebVTT: HH:MM:SS.mmm"""
+    total_seconds = int(td.total_seconds())
+    millis = int((td.total_seconds() - total_seconds) * 1000)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def _td_to_ass_time(td: timedelta) -> str:
+    """המרת timedelta לפורמט ASS: H:MM:SS.cs"""
+    total_seconds = int(td.total_seconds())
+    centiseconds = int((td.total_seconds() - total_seconds) * 100)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{centiseconds:02d}"
+
+
+def _hex_to_ass_color(hex_color: str) -> str:
+    """המרת קוד צבע HEX RGB ל-BGR של ASS"""
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) == 6:
+        r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+        return f"&H{b}{g}{r}&"
+    return "&HFFFFFF&"
+
+
+def _convert_html_to_ass(text: str, settings: CreditSettings) -> str:
+    """המרת תגיות HTML בסיסיות לפורמט תגיות ASS"""
+    # המרת תגיות פונט
+    def replace_font(match):
+        color_val = match.group(1)
+        font_val = match.group(2)
+        inner_text = match.group(3)
+        ass_color = _hex_to_ass_color(color_val)
+        return f"{{\\fn{font_val}\\c{ass_color}}}{inner_text}"
+    
+    # תבנית של color ואז face
+    pattern = r'<font\s+color="([^"]+)"\s+face="([^"]+)">([\s\S]*?)</font>'
+    text = re.sub(pattern, replace_font, text)
+    
+    # תבנית של face ואז color
+    pattern_reverse = r'<font\s+face="([^"]+)"\s+color="([^"]+)">([\s\S]*?)</font>'
+    def replace_font_reverse(match):
+        font_val = match.group(1)
+        color_val = match.group(2)
+        inner_text = match.group(3)
+        ass_color = _hex_to_ass_color(color_val)
+        return f"{{\\fn{font_val}\\c{ass_color}}}{inner_text}"
+    text = re.sub(pattern_reverse, replace_font_reverse, text)
+    
+    # המרת תגיות עיצוב בסיסיות נוספות
+    text = text.replace("<i>", "{\\i1}").replace("</i>", "{\\i0}")
+    text = text.replace("<b>", "{\\b1}").replace("</b>", "{\\b0}")
+    text = text.replace("<u>", "{\\u1}").replace("</u>", "{\\u0}")
+    
+    # המרת ירידות שורה ל-ASS
+    text = text.replace("\n", "\\N")
+    return text
+
+
+def _serialize_vtt(blocks: List[SRTBlock]) -> str:
+    """המרת רשימת בלוקים לטקסט WebVTT"""
+    lines = ["WEBVTT", ""]
+    for block in blocks:
+        start_str = _td_to_vtt_time(block.start)
+        end_str = _td_to_vtt_time(block.end)
+        
+        # טיפול במיקום top ב-WebVTT באמצעות cue settings
+        cue_settings = ""
+        text = block.text
+        if "{\\an8}" in text:
+            cue_settings = " line:0"
+            text = text.replace("{\\an8}", "")
+            
+        lines.append(str(block.index))
+        lines.append(f"{start_str} --> {end_str}{cue_settings}")
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _hex_to_ass_style_color(hex_color: str, alpha: str = "00") -> str:
+    """המרת קוד צבע HEX RGB לפורמט &H AABBGGRR של סגנונות ASS"""
+    hex_color = hex_color.lstrip('#')
+    if len(hex_color) == 6:
+        r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+        return f"&H{alpha}{b}{g}{r}"
+    return f"&H{alpha}FFFFFF"
+
+
+def _serialize_ass(blocks: List[SRTBlock], settings: CreditSettings) -> str:
+    """המרת רשימת בלוקים לפורמט Advanced SubStation Alpha"""
+    outline_color_ass = _hex_to_ass_style_color(settings.outline_color)
+    back_color_ass = _hex_to_ass_style_color(settings.bg_color)
+    
+    # בניית שורת סגנון מותאמת אישית - צבע הכתוביות הראשי (Primary) הוא תמיד לבן (&H00FFFFFF)
+    # צבע הקרדיט המיוחד מוחל נקודתית באמצעות תגיות צבע בפסקה של הקרדיט עצמו.
+    style_line = (
+        f"Style: Default,{settings.font},{settings.font_size},"
+        f"&H00FFFFFF,&H000000FF,{outline_color_ass},{back_color_ass},"
+        f"{settings.is_bold},0,0,0,100,100,0,0,{settings.border_style},{settings.outline_width},{settings.shadow_width},"
+        f"2,10,10,10,1\n"
+    )
+    
+    header = (
+        "[Script Info]\n"
+        "Title: Processed Subtitles\n"
+        "ScriptType: v4.00+\n"
+        "WrapStyle: 0\n"
+        "PlayResX: 640\n"
+        "PlayResY: 360\n"
+        "ScaledBorderAndShadow: yes\n"
+        "\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+        + style_line +
+        "\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+    )
+    
+    lines = [header]
+    for block in blocks:
+        start_str = _td_to_ass_time(block.start)
+        end_str = _td_to_ass_time(block.end)
+        text = _convert_html_to_ass(block.text, settings)
+        lines.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}\n")
+        
+    return "".join(lines)

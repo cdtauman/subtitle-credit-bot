@@ -65,10 +65,12 @@ def settings_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🎨 צבע", callback_data="edit_color")],
         [InlineKeyboardButton("🔤 גופן", callback_data="edit_font")],
         [InlineKeyboardButton("📍 מיקום", callback_data="edit_position")],
+        [InlineKeyboardButton("📁 פורמט קובץ פלט", callback_data="edit_output_format")],
         [InlineKeyboardButton("⏱️ תדירות (דקות)", callback_data="edit_frequency")],
         [InlineKeyboardButton("⏳ משך התחלה (שניות)", callback_data="edit_dur_start")],
         [InlineKeyboardButton("⏳ משך אמצע (שניות)", callback_data="edit_dur_middle")],
         [InlineKeyboardButton("⏳ משך סוף (שניות)", callback_data="edit_dur_end")],
+        [InlineKeyboardButton("🎬 עיצוב כתוביות (פלט ASS)", callback_data="submenu_styling")],
         [InlineKeyboardButton("✅ סיום", callback_data="settings_done")],
     ])
 
@@ -81,4 +83,70 @@ def admin_panel_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🗣️ שידור הודעה", callback_data="admin_broadcast")],
         [InlineKeyboardButton("➕ הוספת משתמש", callback_data="admin_add_user")],
         [InlineKeyboardButton("🔙 חזרה לתפריט הראשי", callback_data="admin_back_to_main")],
+    ])
+
+
+def format_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת בחירת פורמט קובץ פלט"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("SRT (.srt)", callback_data="format_srt"),
+            InlineKeyboardButton("ASS (.ass)", callback_data="format_ass"),
+            InlineKeyboardButton("VTT (.vtt)", callback_data="format_vtt"),
+        ]
+    ])
+
+
+def subtitle_styling_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת לתפריט משנה עיצוב כתוביות"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📏 גודל גופן", callback_data="style_font_size")],
+        [InlineKeyboardButton("🔳 סגנון גבול", callback_data="style_border_style")],
+        [InlineKeyboardButton("🅰️ הדגשת גופן (Bold)", callback_data="style_is_bold")],
+        [InlineKeyboardButton("🎨 צבע גבול / קופסה", callback_data="style_outline_color")],
+        [InlineKeyboardButton("➖ עובי גבול", callback_data="style_outline_width")],
+        [InlineKeyboardButton("👥 מרחק צל", callback_data="style_shadow_width")],
+        [InlineKeyboardButton("🎨 צבע צל / רקע", callback_data="style_bg_color")],
+        [InlineKeyboardButton("🔍 תצוגה מקדימה (Preview)", callback_data="style_preview")],
+        [InlineKeyboardButton("🔙 חזרה להגדרות ראשיות", callback_data="style_back_to_settings")],
+    ])
+
+
+def bold_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת בחירת הדגשה"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("מודגש (Bold) 🅰️", callback_data="bold_1"),
+            InlineKeyboardButton("רגיל (Regular) 📄", callback_data="bold_0"),
+        ]
+    ])
+
+
+def border_style_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת בחירת סגנון גבול"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("צל + גבול 🔳", callback_data="border_style_1"),
+            InlineKeyboardButton("קופסה כהה ⬛", callback_data="border_style_3"),
+        ]
+    ])
+
+
+def custom_start_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת לתחילת עבודה חד-פעמית - שימוש בברירות מחדל או ידני"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("⚙️ להשתמש בברירת מחדל", callback_data="custom_start_default"),
+            InlineKeyboardButton("✏️ להגדיר ידנית", callback_data="custom_start_manual"),
+        ]
+    ])
+
+
+def custom_styling_ask_keyboard() -> InlineKeyboardMarkup:
+    """מקלדת לשאלה האם להגדיר עיצוב מתקדם"""
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🎨 כן, לעצב", callback_data="custom_styling_yes"),
+            InlineKeyboardButton("⏭️ לא, לדלג", callback_data="custom_styling_skip"),
+        ]
     ])

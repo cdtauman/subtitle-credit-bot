@@ -17,13 +17,22 @@ class User:
     # הגדרות ברירת מחדל
     credit_text: Optional[str] = None
     color: str = "#FFFFFF"
-    font: str = "Arial"
+    font: str = "Assistant"
     position: str = "bottom"      # "top" / "bottom"
     frequency: int = 10           # בדקות
     duration_start: int = 5       # שניות
     duration_middle: int = 5      # שניות
     duration_end: int = 5         # שניות
     setup_done: bool = False      # האם השלים הגדרה ראשונית
+    output_format: str = "srt"    # "srt" / "ass" / "vtt"
+    # עיצוב כתוביות מתקדם (ASS)
+    font_size: int = 23
+    border_style: int = 1         # 1 = צל + גבול, 3 = קופסה
+    outline_color: str = "#000000"
+    outline_width: int = 2
+    shadow_width: int = 0
+    bg_color: str = "#000000"
+    is_bold: int = 1              # 1 = מודגש (Bold), 0 = רגיל
 
 
 @dataclass
