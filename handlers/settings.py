@@ -141,8 +141,8 @@ async def settings_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
         "edit_output_format": ("📁 בחר פורמט קובץ פלט חדש:", EDIT_OUTPUT_FORMAT),
         "style_import": (
             "📥 *ייבוא הגדרות עיצוב (Import Settings)*\n\n"
-            "שלח לי את שורת הסגנון של ה-ASS או את פקודת ה-FFmpeg המכילה את סגנון ה-force_style:\n"
-            "_(למשל: FontName=Assistant,Fontsize=23,Bold=1,Shadow=0.1)_",
+            "שלח לי את שורת הסגנון של ה-ASS או את פקודת ה-FFmpeg המכילה את סגנון ה-`force_style`:\n"
+            "*(למשל: FontName=Assistant,Fontsize=23,Bold=1,Shadow=0.1)*",
             EDIT_IMPORT
         ),
     }
