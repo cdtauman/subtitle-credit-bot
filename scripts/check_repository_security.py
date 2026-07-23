@@ -13,6 +13,7 @@ BIDI_AND_FORMAT_CATEGORIES = {"Cf"}
 ALLOWED_ENV_TEMPLATES = {".env.example"}
 SENSITIVE_ENV_KEYS = {
     "BOT_TOKEN",
+    "ADMIN_IDS",
     "API_KEY",
     "SECRET",
     "PASSWORD",
