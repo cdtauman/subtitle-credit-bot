@@ -1,5 +1,20 @@
-database/
+# Runtime data
+/database/
+/temp_files/
 __pycache__/
-.env
-temp_files/
+*.py[cod]
+.pytest_cache/
 
+# Local environments
+.venv/
+venv/
+
+# Environment and secret files
+# The wildcard forms also catch filenames with hidden Unicode characters
+# before ".env" (the cause of the previous accidental commit).
+.env
+.env.*
+*.env
+*.env.*
+!.env.example
+!*.env.example
