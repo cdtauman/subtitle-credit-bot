@@ -2,19 +2,23 @@
 מנהל מסד הנתונים - SQLite אסינכרוני
 """
 
-import aiosqlite
 import logging
+from pathlib import Path
 from typing import Optional, List, Dict
+
+import aiosqlite
+
 from config import DATABASE_PATH, ADMIN_IDS
 from database.models import User
 
 logger = logging.getLogger(__name__)
-
 DB_PATH = DATABASE_PATH
 
 
 async def init_db() -> None:
-    """יצירת טבלאות מסד הנתונים אם לא קיימות"""
+    """יצירת מסד הנתונים והשלמת schema בלי לדרוס העדפות משתמשים קיימות."""
+    Path(DB_PATH).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -44,7 +48,6 @@ async def init_db() -> None:
             )
         """)
 
-        # הוספת עמודות חדשות אם לא קיימות (לתאימות לאחור)
         cols_to_add = {
             "output_format": "TEXT NOT NULL DEFAULT 'srt'",
             "font_size": "INTEGER NOT NULL DEFAULT 23",
@@ -53,42 +56,36 @@ async def init_db() -> None:
             "outline_width": "INTEGER NOT NULL DEFAULT 2",
             "shadow_width": "INTEGER NOT NULL DEFAULT 0",
             "bg_color": "TEXT NOT NULL DEFAULT '#000000'",
-            "is_bold": "INTEGER NOT NULL DEFAULT 1"
+            "is_bold": "INTEGER NOT NULL DEFAULT 1",
         }
+        async with db.execute("PRAGMA table_info(users)") as cursor:
+            existing_columns = {row[1] for row in await cursor.fetchall()}
         for col, definition in cols_to_add.items():
-            try:
+            if col not in existing_columns:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
-                await db.commit()
-            except aiosqlite.OperationalError:
-                pass
-        
-        # טבלת סטטיסטיקות
+
         await db.execute("""
             CREATE TABLE IF NOT EXISTS stats (
                 key TEXT PRIMARY KEY,
                 value INTEGER DEFAULT 0
             )
         """)
-        # אתחול מונה קבצים אם לא קיים
         await db.execute("INSERT OR IGNORE INTO stats (key, value) VALUES ('processed_files', 0)")
-        
-        # עדכון משתמשים קיימים שהיו עם ערכי ברירת המחדל הישנים לערכים החדשים המומלצים
-        await db.execute("UPDATE users SET font = 'Assistant' WHERE font = 'Arial'")
-        await db.execute("UPDATE users SET font_size = 23 WHERE font_size = 20")
-        await db.execute("UPDATE users SET shadow_width = 0 WHERE shadow_width = 2")
-        
         await db.commit()
 
-    # הוספת מנהלים ראשיים מה-.env אם לא קיימים
-    # תיקון: לא לדרוס הגדרות קיימות של מנהלים בעת הפעלה מחדש
+    # אין כאן UPDATE גורף לערכי font/font_size/shadow_width:
+    # ברירות מחדל חדשות חלות רק על עמודות/משתמשים חדשים ואינן מוחקות בחירה מפורשת של משתמש קיים.
     for admin_id in ADMIN_IDS:
         existing_admin = await get_user(admin_id)
         if existing_admin:
-            # אם המנהל קיים, רק לוודא שיש לו הרשאות
-            if not existing_admin.is_admin or not existing_admin.is_approved:
-                await update_user_settings(admin_id, is_admin=True, is_approved=True)
+            if not existing_admin.is_admin or not existing_admin.is_approved or existing_admin.is_banned:
+                await update_user_settings(
+                    admin_id,
+                    is_admin=True,
+                    is_approved=True,
+                    is_banned=False,
+                )
         else:
-            # אם המנהל לא קיים, ליצור אותו עם ברירות מחדל
             await upsert_user(User(
                 user_id=admin_id,
                 username=None,
@@ -102,20 +99,14 @@ async def init_db() -> None:
 
 
 async def get_user(user_id: int) -> Optional[User]:
-    """קבלת משתמש לפי מזהה"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM users WHERE user_id = ?", (user_id,)
-        ) as cursor:
+        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
             row = await cursor.fetchone()
-            if row is None:
-                return None
-            return _row_to_user(row)
+            return None if row is None else _row_to_user(row)
 
 
 async def upsert_user(user: User) -> None:
-    """הוספה או עדכון משתמש"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
             INSERT INTO users (
@@ -154,13 +145,12 @@ async def upsert_user(user: User) -> None:
             user.frequency, user.duration_start, user.duration_middle,
             user.duration_end, int(user.setup_done), user.output_format,
             user.font_size, user.border_style, user.outline_color,
-            user.outline_width, user.shadow_width, user.bg_color, user.is_bold
+            user.outline_width, user.shadow_width, user.bg_color, user.is_bold,
         ))
         await db.commit()
 
 
 async def update_user_settings(user_id: int, **kwargs) -> None:
-    """עדכון שדות ספציפיים למשתמש"""
     if not kwargs:
         return
     allowed = {
@@ -177,66 +167,58 @@ async def update_user_settings(user_id: int, **kwargs) -> None:
 
     set_clause = ", ".join(f"{k} = ?" for k in fields)
     values = list(fields.values()) + [user_id]
-
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            f"UPDATE users SET {set_clause} WHERE user_id = ?", values
-        )
+        await db.execute(f"UPDATE users SET {set_clause} WHERE user_id = ?", values)
         await db.commit()
 
 
 async def get_all_approved_users() -> List[User]:
-    """קבלת כל המשתמשים המאושרים"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM users WHERE is_approved = 1 AND is_banned = 0"
-        ) as cursor:
-            rows = await cursor.fetchall()
-            return [_row_to_user(r) for r in rows]
+        async with db.execute("SELECT * FROM users WHERE is_approved = 1 AND is_banned = 0") as cursor:
+            return [_row_to_user(r) for r in await cursor.fetchall()]
 
 
 async def get_all_users() -> List[User]:
-    """קבלת כל המשתמשים"""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM users") as cursor:
-            rows = await cursor.fetchall()
-            return [_row_to_user(r) for r in rows]
+            return [_row_to_user(r) for r in await cursor.fetchall()]
 
 
 async def is_admin(user_id: int) -> bool:
-    """בדיקה האם המשתמש הוא מנהל"""
     if user_id in ADMIN_IDS:
         return True
     user = await get_user(user_id)
-    return user is not None and user.is_admin
+    return user is not None and user.is_admin and not user.is_banned
 
 
 async def is_approved(user_id: int) -> bool:
-    """בדיקה האם המשתמש מאושר"""
     if user_id in ADMIN_IDS:
         return True
     user = await get_user(user_id)
     return user is not None and user.is_approved and not user.is_banned
 
 
-async def increment_processed_files() -> None:
-    """הגדלת מונה הקבצים המעובדים"""
+async def increment_processed_files(count: int = 1) -> None:
+    if count <= 0:
+        return
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE stats SET value = value + 1 WHERE key = 'processed_files'")
+        await db.execute(
+            "UPDATE stats SET value = value + ? WHERE key = 'processed_files'",
+            (count,),
+        )
         await db.commit()
 
 
 async def get_stats() -> Dict[str, int]:
-    """קבלת סטטיסטיקות"""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT key, value FROM stats") as cursor:
-            rows = await cursor.fetchall()
-            return {row[0]: row[1] for row in rows}
+            return {row[0]: row[1] for row in await cursor.fetchall()}
 
 
 def _row_to_user(row: aiosqlite.Row) -> User:
+    keys = row.keys()
     return User(
         user_id=row["user_id"],
         username=row["username"],
@@ -253,12 +235,12 @@ def _row_to_user(row: aiosqlite.Row) -> User:
         duration_middle=row["duration_middle"],
         duration_end=row["duration_end"],
         setup_done=bool(row["setup_done"]),
-        output_format=row["output_format"] if "output_format" in row.keys() else "srt",
-        font_size=row["font_size"] if "font_size" in row.keys() else 23,
-        border_style=row["border_style"] if "border_style" in row.keys() else 1,
-        outline_color=row["outline_color"] if "outline_color" in row.keys() else "#000000",
-        outline_width=row["outline_width"] if "outline_width" in row.keys() else 2,
-        shadow_width=row["shadow_width"] if "shadow_width" in row.keys() else 0,
-        bg_color=row["bg_color"] if "bg_color" in row.keys() else "#000000",
-        is_bold=row["is_bold"] if "is_bold" in row.keys() else 1,
+        output_format=row["output_format"] if "output_format" in keys else "srt",
+        font_size=row["font_size"] if "font_size" in keys else 23,
+        border_style=row["border_style"] if "border_style" in keys else 1,
+        outline_color=row["outline_color"] if "outline_color" in keys else "#000000",
+        outline_width=row["outline_width"] if "outline_width" in keys else 2,
+        shadow_width=row["shadow_width"] if "shadow_width" in keys else 0,
+        bg_color=row["bg_color"] if "bg_color" in keys else "#000000",
+        is_bold=row["is_bold"] if "is_bold" in keys else 1,
     )
