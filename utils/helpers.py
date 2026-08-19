@@ -69,20 +69,18 @@ def format_user_settings(user) -> str:
 def create_color_image(hex_color: str) -> io.BytesIO:
     """יוצר תמונה קטנה של ריבוע בצבע הנתון ומחזיר אותה כ-BytesIO"""
     try:
-        # הסרת # אם קיים והמרת ל-RGB
         hex_color = hex_color.lstrip('#')
         rgb_color = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-        
-        img = Image.new('RGB', (100, 100), color = rgb_color)
-        
+
+        img = Image.new('RGB', (100, 100), color=rgb_color)
+
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
         return img_byte_arr
     except Exception as e:
         logger.error(f"שגיאה ביצירת תמונת צבע עבור {hex_color}: {e}")
-        # במקרה של שגיאה, נחזיר תמונה שחורה
-        img = Image.new('RGB', (100, 100), color = (0, 0, 0))
+        img = Image.new('RGB', (100, 100), color=(0, 0, 0))
         img_byte_arr = io.BytesIO()
         img.save(img_byte_arr, format='PNG')
         img_byte_arr.seek(0)
@@ -91,17 +89,17 @@ def create_color_image(hex_color: str) -> io.BytesIO:
 
 def format_user_styling_settings(user) -> str:
     """פורמט הגדרות עיצוב כתוביות להצגה"""
-    border_label = "צל + גבול 🔳" if user.border_style == 1 else "קופסה כהה ⬛"
+    border_label = "צל + גבול 🔳" if user.border_style == 1 else "קופסה אטומה ⬛"
     bold_label = "מודגש (Bold) 🅰️" if getattr(user, "is_bold", 1) == 1 else "רגיל 📄"
     return (
         f"🎨 *הגדרות עיצוב הכתוביות שלך (לפורמט ASS):*\n\n"
         f"📏 גודל גופן: `{user.font_size}`\n"
         f"🔳 סגנון גבול: {border_label}\n"
         f"🅰️ הדגשת גופן: {bold_label}\n"
-        f"🎨 צבע גבול/קופסה: `{user.outline_color}`\n"
-        f"➖ עובי גבול: `{user.outline_width}` פיקסלים\n"
+        f"🎨 צבע גבול: `{user.outline_color}` _(במצב צל + גבול)_\n"
+        f"➖ עובי גבול / ריווח קופסה: `{user.outline_width}` פיקסלים\n"
         f"👥 מרחק צל: `{user.shadow_width}` פיקסלים\n"
-        f"🎨 צבע צל/רקע: `{user.bg_color}`\n"
+        f"🎨 צבע צל / קופסה: `{user.bg_color}`\n"
     )
 
 
@@ -112,10 +110,9 @@ def parse_style_string(text: str) -> dict:
     """
     import re
     result = {}
-    
-    # תבנית של מפתח=ערך (תומך גם ברווחים ומירכאות)
+
     pattern = re.compile(r'(\w+)\s*=\s*(?:"([^"]+)"|\'([^\']+)\'|([^,\'"\s]+))')
-    
+
     def parse_inner(text_to_parse):
         matches = pattern.findall(text_to_parse)
         for match in matches:
@@ -124,17 +121,14 @@ def parse_style_string(text: str) -> dict:
             if not val:
                 continue
             val = val.strip()
-            
-            # אם הערך הוא בעצמו תת-מערך של מפתח=ערך (כמו force_style='...'), ננתח אותו רקורסיבית
+
             if "=" in val and raw_key in ("force_style", "style", "command", "vf"):
                 parse_inner(val)
                 continue
-                
-            # מיפוי פונט
+
             if raw_key in ("fontname", "font"):
                 result["font"] = val
-                
-            # גודל גופן
+
             elif raw_key in ("fontsize", "size"):
                 try:
                     clean_val = re.sub(r'[^\d]', '', val)
@@ -142,8 +136,7 @@ def parse_style_string(text: str) -> dict:
                         result["font_size"] = int(clean_val)
                 except ValueError:
                     pass
-                    
-            # הדגשה (Bold)
+
             elif raw_key == "bold":
                 try:
                     if val.lower() in ("true", "1", "yes"):
@@ -152,8 +145,7 @@ def parse_style_string(text: str) -> dict:
                         result["is_bold"] = 0
                 except ValueError:
                     pass
-                    
-            # גבול (Outline)
+
             elif raw_key in ("outline", "outlinewidth", "border"):
                 try:
                     clean_val = re.sub(r'[^\d]', '', val)
@@ -161,16 +153,14 @@ def parse_style_string(text: str) -> dict:
                         result["outline_width"] = int(clean_val)
                 except ValueError:
                     pass
-                    
-            # צל (Shadow)
+
             elif raw_key in ("shadow", "shadowwidth", "shadowx", "shadowy"):
                 try:
                     f_val = float(val)
                     result["shadow_width"] = int(round(f_val))
                 except ValueError:
                     pass
-                    
-            # סגנון גבול (BorderStyle)
+
             elif raw_key in ("borderstyle", "style"):
                 try:
                     clean_val = re.sub(r'[^\d]', '', val)
@@ -178,8 +168,7 @@ def parse_style_string(text: str) -> dict:
                         result["border_style"] = int(clean_val)
                 except ValueError:
                     pass
-                    
-            # צבעים
+
             elif raw_key in ("primarycolour", "colour", "color"):
                 if val.startswith("&H"):
                     hex_clean = val.replace("&H", "").replace("&", "")
@@ -190,7 +179,7 @@ def parse_style_string(text: str) -> dict:
                         result["color"] = f"#{rr}{gg}{bb}"
                 elif val.startswith("#"):
                     result["color"] = val
-                    
+
             elif raw_key == "outlinecolour":
                 if val.startswith("&H"):
                     hex_clean = val.replace("&H", "").replace("&", "")
@@ -201,7 +190,7 @@ def parse_style_string(text: str) -> dict:
                         result["outline_color"] = f"#{rr}{gg}{bb}"
                 elif val.startswith("#"):
                     result["outline_color"] = val
-                    
+
             elif raw_key in ("backcolour", "bgcolor"):
                 if val.startswith("&H"):
                     hex_clean = val.replace("&H", "").replace("&", "")
@@ -215,4 +204,3 @@ def parse_style_string(text: str) -> dict:
 
     parse_inner(text)
     return result
-

@@ -75,7 +75,7 @@ async def custom_job_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "🎬 *קרדיט מותאם אישית - עיבוד חד-פעמי*\n\n"
         "האם ברצונך להשתמש בהגדרות ברירת המחדל שלך (כך שתתבקש להזין רק את טקסט הקרדיט החדש), או להגדיר הכל ידנית עבור קובץ זה?"
     )
-    
+
     if update.message:
         await update.message.reply_text(
             text,
@@ -96,7 +96,7 @@ async def custom_start_choice_callback(update: Update, context: ContextTypes.DEF
     query = update.callback_query
     await query.answer()
     choice = query.data
-    
+
     if choice == "custom_start_default":
         await query.edit_message_text(
             "📝 *טקסט הקרדיט:*\n"
@@ -105,7 +105,6 @@ async def custom_start_choice_callback(update: Update, context: ContextTypes.DEF
         )
         return CUSTOM_CREDIT_TEXT_ONLY
     else:
-        # Manual configuration
         await query.edit_message_text(
             "📝 *שלב 1/9 - טקסט הקרדיט:*\n"
             "הכנס את הטקסט שיופיע כקרדיט:",
@@ -119,10 +118,10 @@ async def custom_got_credit_text_only(update: Update, context: ContextTypes.DEFA
     if not text:
         await update.message.reply_text("❌ הטקסט לא יכול להיות ריק. נסה שוב:")
         return CUSTOM_CREDIT_TEXT_ONLY
-        
+
     user_id = update.effective_user.id
     db_user = await get_user(user_id)
-    
+
     context.user_data["custom_settings"] = {
         "credit_text": text,
         "color": db_user.color,
@@ -139,8 +138,9 @@ async def custom_got_credit_text_only(update: Update, context: ContextTypes.DEFA
         "outline_width": db_user.outline_width,
         "shadow_width": db_user.shadow_width,
         "bg_color": db_user.bg_color,
+        "is_bold": db_user.is_bold,
     }
-    
+
     await update.message.reply_text(
         "✅ *ההגדרות המותאמות אישית מוכנות!*\n"
         "_(נעשה שימוש בהגדרות ברירת המחדל שלך עבור שאר הפרמטרים)_\n\n"
@@ -174,14 +174,14 @@ async def custom_got_color(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return CUSTOM_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     context.user_data["c_color"] = color
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
         caption=f"✅ צבע: `{color}`",
         parse_mode="Markdown"
     )
-    
+
     await query.message.reply_text(
         "🔤 *שלב 3/9 - גופן:*\n"
         "בחר גופן מהרשימה:",
@@ -197,7 +197,7 @@ async def custom_got_color_custom(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ קוד HEX לא תקין. נסה שוב:")
         return CUSTOM_COLOR_CUSTOM
     context.user_data["c_color"] = color
-    
+
     color_image = create_color_image(color)
     await update.message.reply_photo(
         photo=color_image,
@@ -251,9 +251,20 @@ async def custom_got_output_format(update: Update, context: ContextTypes.DEFAULT
     fmt = query.data.replace("format_", "")
     context.user_data["c_output_format"] = fmt
     await query.edit_message_text(f"✅ פורמט פלט: {fmt.upper()}")
+
+    # הגדרות הגופן/גבול המתקדמות רלוונטיות רק לקובץ ASS.
+    if fmt != "ass":
+        await query.message.reply_text(
+            "⏱️ *שלב 6/9 - תדירות:*\n"
+            "כל כמה דקות יופיע הקרדיט באמצע הסרט?\n"
+            "_(הזן מספר בין 0 ל-60. 0 = ללא קרדיט אמצע)_",
+            parse_mode="Markdown",
+        )
+        return CUSTOM_FREQUENCY
+
     await query.message.reply_text(
         "🎬 *עיצוב כתוביות מתקדם (ASS)*\n\n"
-        "האם ברצונך להגדיר עיצוב מותאם אישית עבור כתוביות אלו (כמו גודל גופן, סגנון ועובי גבול, וצבעי צל)?",
+        "האם ברצונך להגדיר עיצוב מותאם אישית עבור כתוביות אלו (כמו גודל גופן, סגנון ועובי גבול, וצבעי צל/קופסה)?",
         reply_markup=custom_styling_ask_keyboard()
     )
     return CUSTOM_STYLING_ASK
@@ -263,7 +274,7 @@ async def custom_styling_ask_callback(update: Update, context: ContextTypes.DEFA
     query = update.callback_query
     await query.answer()
     choice = query.data
-    
+
     if choice == "custom_styling_yes":
         await query.edit_message_text(
             "📏 *גודל גופן כתוביות:*\n"
@@ -280,7 +291,7 @@ async def custom_styling_ask_callback(update: Update, context: ContextTypes.DEFA
         context.user_data["c_shadow_width"] = db_user.shadow_width
         context.user_data["c_bg_color"] = db_user.bg_color
         context.user_data["c_is_bold"] = db_user.is_bold
-        
+
         await query.edit_message_text(
             "⏱️ *שלב 6/9 - תדירות:*\n"
             "כל כמה דקות יופיע הקרדיט באמצע הסרט?\n"
@@ -308,7 +319,7 @@ async def custom_got_border_style(update: Update, context: ContextTypes.DEFAULT_
     await query.answer()
     val = int(query.data.replace("border_style_", ""))
     context.user_data["c_border_style"] = val
-    label = "צל + גבול" if val == 1 else "קופסה כהה"
+    label = "צל + גבול" if val == 1 else "קופסה אטומה"
     await query.edit_message_text(f"✅ סגנון גבול: {label}")
     await query.message.reply_text(
         "🅰️ *הדגשת גופן (Bold):*\n"
@@ -326,8 +337,8 @@ async def custom_got_is_bold(update: Update, context: ContextTypes.DEFAULT_TYPE)
     label = "מודגש (Bold)" if val == 1 else "רגיל"
     await query.edit_message_text(f"✅ הדגשה: {label}")
     await query.message.reply_text(
-        "🎨 *צבע גבול / קופסה:*\n"
-        "בחר צבע:",
+        "🎨 *צבע גבול:*\n"
+        "הצבע הזה משמש במצב 'צל + גבול'. בחר צבע:",
         reply_markup=color_keyboard()
     )
     return CUSTOM_OUTLINE_COLOR
@@ -341,7 +352,7 @@ async def custom_got_outline_color(update: Update, context: ContextTypes.DEFAULT
         return CUSTOM_OUTLINE_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     context.user_data["c_outline_color"] = color
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
@@ -349,7 +360,7 @@ async def custom_got_outline_color(update: Update, context: ContextTypes.DEFAULT
         parse_mode="Markdown"
     )
     await query.message.reply_text(
-        "➖ *עובי גבול:*\n"
+        "➖ *עובי גבול / ריווח קופסה:*\n"
         "הזן מספר שלם בין 0 ל-10:"
     )
     return CUSTOM_OUTLINE_WIDTH
@@ -361,15 +372,15 @@ async def custom_got_outline_color_custom(update: Update, context: ContextTypes.
         await update.message.reply_text("❌ קוד HEX לא תקין. הזן בפורמט #RRGGBB:")
         return CUSTOM_OUTLINE_COLOR_CUSTOM
     context.user_data["c_outline_color"] = color
-    
+
     color_image = create_color_image(color)
-    await query.message.reply_photo(
+    await update.message.reply_photo(
         photo=color_image,
         caption=f"✅ צבע גבול: `{color}`",
         parse_mode="Markdown"
     )
-    await query.message.reply_text(
-        "➖ *עובי גבול:*\n"
+    await update.message.reply_text(
+        "➖ *עובי גבול / ריווח קופסה:*\n"
         "הזן מספר שלם בין 0 ל-10:"
     )
     return CUSTOM_OUTLINE_WIDTH
@@ -395,8 +406,8 @@ async def custom_got_shadow_width(update: Update, context: ContextTypes.DEFAULT_
         return CUSTOM_SHADOW_WIDTH
     context.user_data["c_shadow_width"] = val
     await update.message.reply_text(
-        "🎨 *צבע צל / רקע:*\n"
-        "בחר צבע:",
+        "🎨 *צבע צל / קופסה:*\n"
+        "במצב 'קופסה אטומה' זהו צבע הרקע של הקופסה. בחר צבע:",
         reply_markup=color_keyboard()
     )
     return CUSTOM_BG_COLOR
@@ -406,15 +417,15 @@ async def custom_got_bg_color(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     if query.data == "color_custom":
-        await query.edit_message_text("✏️ הזן קוד צבע HEX עבור הרקע/הצל (למשל #000000):")
+        await query.edit_message_text("✏️ הזן קוד צבע HEX עבור הצל/הקופסה (למשל #000000):")
         return CUSTOM_BG_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     context.user_data["c_bg_color"] = color
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
-        caption=f"✅ צבע רקע/צל: `{color}`",
+        caption=f"✅ צבע צל/קופסה: `{color}`",
         parse_mode="Markdown"
     )
     await query.message.reply_text(
@@ -431,32 +442,17 @@ async def custom_got_bg_color_custom(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("❌ קוד HEX לא תקין. הזן בפורמט #RRGGBB:")
         return CUSTOM_BG_COLOR_CUSTOM
     context.user_data["c_bg_color"] = color
-    
+
     color_image = create_color_image(color)
-    await query.message.reply_photo(
+    await update.message.reply_photo(
         photo=color_image,
-        caption=f"✅ צבע רקע/צל: `{color}`",
+        caption=f"✅ צבע צל/קופסה: `{color}`",
         parse_mode="Markdown"
     )
-    await query.message.reply_text(
+    await update.message.reply_text(
         "⏱️ *שלב 6/9 - תדירות:*\n"
         "כל כמה דקות יופיע הקרדיט באמצע הסרט?\n"
         "_(הזן מספר בין 0 ל-60. 0 = ללא קרדיט אמצע)_"
-    )
-    return CUSTOM_FREQUENCY
-
-
-async def custom_got_output_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    fmt = query.data.replace("format_", "")
-    context.user_data["c_output_format"] = fmt
-    await query.edit_message_text(f"✅ פורמט פלט: {fmt.upper()}")
-    await query.message.reply_text(
-        "⏱️ *שלב 6/9 - תדירות:*\n"
-        "כל כמה דקות יופיע הקרדיט באמצע הסרט?\n"
-        "_(הזן מספר בין 0 ל-60. 0 = ללא קרדיט אמצע)_",
-        parse_mode="Markdown"
     )
     return CUSTOM_FREQUENCY
 
@@ -502,8 +498,7 @@ async def custom_got_dur_end(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not dur:
         await update.message.reply_text("❌ הזן מספר בין 1 ל-30:")
         return CUSTOM_DUR_END
-    
-    # שמירה כהגדרות מותאמות אישית
+
     context.user_data["custom_settings"] = {
         "credit_text": context.user_data["c_credit_text"],
         "color": context.user_data["c_color"],
@@ -514,7 +509,6 @@ async def custom_got_dur_end(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "duration_start": context.user_data["c_dur_start"],
         "duration_middle": context.user_data.get("c_dur_middle", 0),
         "duration_end": dur,
-        # הגדרות עיצוב מותאמות
         "font_size": context.user_data.get("c_font_size", 20),
         "border_style": context.user_data.get("c_border_style", 1),
         "outline_color": context.user_data.get("c_outline_color", "#000000"),
@@ -524,7 +518,6 @@ async def custom_got_dur_end(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "is_bold": context.user_data.get("c_is_bold", 1),
     }
 
-    # ניקוי נתונים זמניים
     for key in list(context.user_data.keys()):
         if key.startswith("c_"):
             del context.user_data[key]

@@ -53,14 +53,15 @@ def _td_to_srt_time(td: timedelta) -> str:
 
 
 def _srt_time_to_td(time_str: str) -> timedelta:
-    """המרת פורמט SRT לtimedelta"""
+    """המרת פורמט SRT ל-timedelta, כולל שבר שנייה בן 1-3 ספרות."""
     time_str = time_str.strip().replace(",", ".")
     parts = time_str.split(":")
     hours = int(parts[0])
     minutes = int(parts[1])
     sec_parts = parts[2].split(".")
     seconds = int(sec_parts[0])
-    millis = int(sec_parts[1]) if len(sec_parts) > 1 else 0
+    fraction = sec_parts[1] if len(sec_parts) > 1 else ""
+    millis = int((fraction + "000")[:3]) if fraction else 0
     return timedelta(hours=hours, minutes=minutes, seconds=seconds, milliseconds=millis)
 
 
@@ -111,7 +112,7 @@ def _find_free_window(
     """
     מציאת חלון זמן פנוי לקרדיט.
     מחזיר (start, end) או None אם לא נמצא חלון מתאים.
-    
+
     תלוית-מיקום: אם הקרדיט בחלק אחר מהכתוביות, מאפשרים חפיפה.
     """
     # אם הקרדיט למעלה והכתוביות למטה - אין התנגשות אפשרית
@@ -187,7 +188,7 @@ def process_srt(content: str, settings: CreditSettings) -> str:
         freq_td = timedelta(minutes=settings.frequency)
         middle_dur = timedelta(seconds=settings.duration_middle)
         current_time = timedelta(minutes=settings.frequency)
-        
+
         # גבול עליון לקרדיט אמצע: לא להציג בפרק הזמן של התדירות לפני הסוף
         middle_credits_limit = total_end - freq_td
 
@@ -295,26 +296,28 @@ def _convert_html_to_ass(text: str, settings: CreditSettings) -> str:
         inner_text = match.group(3)
         ass_color = _hex_to_ass_color(color_val)
         return f"{{\\fn{font_val}\\c{ass_color}}}{inner_text}"
-    
+
     # תבנית של color ואז face
     pattern = r'<font\s+color="([^"]+)"\s+face="([^"]+)">([\s\S]*?)</font>'
     text = re.sub(pattern, replace_font, text)
-    
+
     # תבנית של face ואז color
     pattern_reverse = r'<font\s+face="([^"]+)"\s+color="([^"]+)">([\s\S]*?)</font>'
+
     def replace_font_reverse(match):
         font_val = match.group(1)
         color_val = match.group(2)
         inner_text = match.group(3)
         ass_color = _hex_to_ass_color(color_val)
         return f"{{\\fn{font_val}\\c{ass_color}}}{inner_text}"
+
     text = re.sub(pattern_reverse, replace_font_reverse, text)
-    
+
     # המרת תגיות עיצוב בסיסיות נוספות
     text = text.replace("<i>", "{\\i1}").replace("</i>", "{\\i0}")
     text = text.replace("<b>", "{\\b1}").replace("</b>", "{\\b0}")
     text = text.replace("<u>", "{\\u1}").replace("</u>", "{\\u0}")
-    
+
     # המרת ירידות שורה ל-ASS
     text = text.replace("\n", "\\N")
     return text
@@ -326,14 +329,14 @@ def _serialize_vtt(blocks: List[SRTBlock]) -> str:
     for block in blocks:
         start_str = _td_to_vtt_time(block.start)
         end_str = _td_to_vtt_time(block.end)
-        
+
         # טיפול במיקום top ב-WebVTT באמצעות cue settings
         cue_settings = ""
         text = block.text
         if "{\\an8}" in text:
             cue_settings = " line:0"
             text = text.replace("{\\an8}", "")
-            
+
         lines.append(str(block.index))
         lines.append(f"{start_str} --> {end_str}{cue_settings}")
         lines.append(text)
@@ -351,19 +354,26 @@ def _hex_to_ass_style_color(hex_color: str, alpha: str = "00") -> str:
 
 
 def _serialize_ass(blocks: List[SRTBlock], settings: CreditSettings) -> str:
-    """המרת רשימת בלוקים לפורמט Advanced SubStation Alpha"""
-    outline_color_ass = _hex_to_ass_style_color(settings.outline_color)
+    """המרת רשימת בלוקים לפורמט Advanced SubStation Alpha."""
+    border_style = 3 if settings.border_style == 3 else 1
+
+    # ב-ASS, BorderStyle=3 משתמש ב-OutlineColour עבור צבע הקופסה האטומה.
+    # בממשק הבוט המשתמש בוחר את צבע הקופסה דרך bg_color ("צבע צל / קופסה"),
+    # לכן במצב קופסה ממפים את bg_color ל-OutlineColour כדי שהתוצאה תקביל לתצוגה המקדימה.
+    effective_outline_color = settings.bg_color if border_style == 3 else settings.outline_color
+    outline_color_ass = _hex_to_ass_style_color(effective_outline_color)
     back_color_ass = _hex_to_ass_style_color(settings.bg_color)
-    
-    # בניית שורת סגנון מותאמת אישית - צבע הכתוביות הראשי (Primary) הוא תמיד לבן (&H00FFFFFF)
+    effective_shadow_width = 0 if border_style == 3 else settings.shadow_width
+
+    # צבע הכתוביות הראשי (Primary) תמיד לבן.
     # צבע הקרדיט המיוחד מוחל נקודתית באמצעות תגיות צבע בפסקה של הקרדיט עצמו.
     style_line = (
         f"Style: Default,{settings.font},{settings.font_size},"
         f"&H00FFFFFF,&H000000FF,{outline_color_ass},{back_color_ass},"
-        f"{settings.is_bold},0,0,0,100,100,0,0,{settings.border_style},{settings.outline_width},{settings.shadow_width},"
+        f"{settings.is_bold},0,0,0,100,100,0,0,{border_style},{settings.outline_width},{effective_shadow_width},"
         f"2,10,10,10,1\n"
     )
-    
+
     header = (
         "[Script Info]\n"
         "Title: Processed Subtitles\n"
@@ -380,12 +390,12 @@ def _serialize_ass(blocks: List[SRTBlock], settings: CreditSettings) -> str:
         "[Events]\n"
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
     )
-    
+
     lines = [header]
     for block in blocks:
         start_str = _td_to_ass_time(block.start)
         end_str = _td_to_ass_time(block.end)
         text = _convert_html_to_ass(block.text, settings)
         lines.append(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}\n")
-        
+
     return "".join(lines)

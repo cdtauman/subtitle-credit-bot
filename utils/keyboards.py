@@ -104,10 +104,10 @@ def subtitle_styling_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton("📏 גודל גופן", callback_data="style_font_size")],
         [InlineKeyboardButton("🔳 סגנון גבול", callback_data="style_border_style")],
         [InlineKeyboardButton("🅰️ הדגשת גופן (Bold)", callback_data="style_is_bold")],
-        [InlineKeyboardButton("🎨 צבע גבול / קופסה", callback_data="style_outline_color")],
-        [InlineKeyboardButton("➖ עובי גבול", callback_data="style_outline_width")],
+        [InlineKeyboardButton("🎨 צבע גבול", callback_data="style_outline_color")],
+        [InlineKeyboardButton("➖ עובי גבול / ריווח קופסה", callback_data="style_outline_width")],
         [InlineKeyboardButton("👥 מרחק צל", callback_data="style_shadow_width")],
-        [InlineKeyboardButton("🎨 צבע צל / רקע", callback_data="style_bg_color")],
+        [InlineKeyboardButton("🎨 צבע צל / קופסה", callback_data="style_bg_color")],
         [InlineKeyboardButton("🔍 תצוגה מקדימה (Preview)", callback_data="style_preview")],
         [InlineKeyboardButton("🔙 חזרה להגדרות ראשיות", callback_data="style_back_to_settings")],
     ])
@@ -128,7 +128,7 @@ def border_style_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("צל + גבול 🔳", callback_data="border_style_1"),
-            InlineKeyboardButton("קופסה כהה ⬛", callback_data="border_style_3"),
+            InlineKeyboardButton("קופסה אטומה ⬛", callback_data="border_style_3"),
         ]
     ])
 
