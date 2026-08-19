@@ -68,7 +68,6 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """כניסה לתפריט הגדרות"""
     user_id = update.effective_user.id
 
-    # טיפול במקרה של callback query
     message = update.message
     if not message and update.callback_query:
         message = update.callback_query.message
@@ -87,17 +86,14 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     text = format_user_settings(db_user)
-    
-    # אם זו הודעה רגילה
+
     if update.message:
         await update.message.reply_text(
             text + "\n\n*בחר מה לערוך:*",
             parse_mode="Markdown",
             reply_markup=settings_menu_keyboard(),
         )
-    # אם זה callback query (חזרה לתפריט)
     elif update.callback_query:
-        # מנסים לערוך את ההודעה הקיימת
         try:
             await update.callback_query.edit_message_text(
                 text + "\n\n*בחר מה לערוך:*",
@@ -105,13 +101,12 @@ async def settings_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=settings_menu_keyboard(),
             )
         except Exception:
-            # אם אי אפשר לערוך (למשל הודעה ישנה מדי), שולחים חדשה
             await message.reply_text(
                 text + "\n\n*בחר מה לערוך:*",
                 parse_mode="Markdown",
                 reply_markup=settings_menu_keyboard(),
             )
-            
+
     return SETTINGS_MENU
 
 
@@ -165,7 +160,6 @@ async def settings_menu_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.edit_message_text(prompt, reply_markup=format_keyboard())
         return EDIT_OUTPUT_FORMAT
     else:
-        # style_import prompt needs markdown parsing
         if action == "style_import":
             await query.edit_message_text(prompt, parse_mode="Markdown")
         else:
@@ -194,14 +188,14 @@ async def edit_color_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return EDIT_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     await update_user_settings(update.effective_user.id, color=color)
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
         caption=f"✅ צבע עודכן: `{color}`",
         parse_mode="Markdown"
     )
-    
+
     return await settings_handler(update, context)
 
 
@@ -211,7 +205,7 @@ async def edit_color_custom(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ קוד HEX לא תקין. הזן בפורמט #RRGGBB:")
         return EDIT_COLOR_CUSTOM
     await update_user_settings(update.effective_user.id, color=color)
-    
+
     color_image = create_color_image(color)
     await update.message.reply_photo(
         photo=color_image,
@@ -285,10 +279,10 @@ async def submenu_styling_handler(update: Update, context: ContextTypes.DEFAULT_
     message = update.message
     if not message and query:
         message = query.message
-        
+
     db_user = await get_user(user_id)
     text = format_user_styling_settings(db_user)
-    
+
     if query:
         try:
             await query.edit_message_text(
@@ -315,15 +309,15 @@ async def submenu_styling_callback(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
     action = query.data
-    
+
     if action == "style_back_to_settings":
         return await settings_handler(update, context)
-        
+
     if action == "style_preview":
         user_id = update.effective_user.id
         db_user = await get_user(user_id)
         status_msg = await query.message.reply_text("⏳ מייצר תצוגה מקדימה...")
-        
+
         preview_text = db_user.credit_text or "הבוט מעצב כתוביות בעברית!"
         try:
             preview_image = generate_subtitle_preview(
@@ -355,17 +349,17 @@ async def submenu_styling_callback(update: Update, context: ContextTypes.DEFAULT
         "style_font_size": ("📏 הזן גודל גופן חדש (מספר שלם בין 10 ל-60):", EDIT_FONT_SIZE),
         "style_border_style": ("🔳 בחר סגנון גבול:", EDIT_BORDER_STYLE),
         "style_is_bold": ("🅰️ בחר הדגשת גופן (Bold):", EDIT_IS_BOLD),
-        "style_outline_color": ("🎨 בחר צבע גבול / קופסה חדש:", EDIT_OUTLINE_COLOR),
-        "style_outline_width": ("➖ הזן עובי גבול (מספר שלם בין 0 ל-10):", EDIT_OUTLINE_WIDTH),
+        "style_outline_color": ("🎨 בחר צבע גבול חדש (משמש במצב 'צל + גבול'):", EDIT_OUTLINE_COLOR),
+        "style_outline_width": ("➖ הזן עובי גבול / ריווח קופסה (מספר שלם בין 0 ל-10):", EDIT_OUTLINE_WIDTH),
         "style_shadow_width": ("👥 הזן מרחק צל (מספר שלם בין 0 ל-10):", EDIT_SHADOW_WIDTH),
-        "style_bg_color": ("🎨 בחר צבע צל / רקע חדש:", EDIT_BG_COLOR),
+        "style_bg_color": ("🎨 בחר צבע צל / קופסה חדש:", EDIT_BG_COLOR),
     }
-    
+
     if action not in prompts:
         return SUBMENU_STYLING
-        
+
     prompt, state = prompts[action]
-    
+
     if action == "style_border_style":
         await query.edit_message_text(prompt, reply_markup=border_style_keyboard())
         return EDIT_BORDER_STYLE
@@ -395,7 +389,7 @@ async def edit_border_style_callback(update: Update, context: ContextTypes.DEFAU
     await query.answer()
     val = int(query.data.replace("border_style_", ""))
     await update_user_settings(update.effective_user.id, border_style=val)
-    label = "צל + גבול" if val == 1 else "קופסה כהה"
+    label = "צל + גבול" if val == 1 else "קופסה אטומה"
     await query.message.reply_text(f"✅ סגנון גבול עודכן ל: {label}")
     return await submenu_styling_handler(update, context)
 
@@ -415,7 +409,7 @@ async def edit_import_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     if not text:
         await update.message.reply_text("❌ הטקסט לא תקין. נסה שוב:")
         return EDIT_IMPORT
-        
+
     parsed = parse_style_string(text)
     if not parsed:
         await update.message.reply_text(
@@ -423,10 +417,10 @@ async def edit_import_callback(update: Update, context: ContextTypes.DEFAULT_TYP
             "ודא ששלחת טקסט המכיל הגדרות בפורמט `Key=Value` (למשל: `FontName=Assistant,Fontsize=23...`) ונסה שוב:"
         )
         return EDIT_IMPORT
-        
+
     user_id = update.effective_user.id
     await update_user_settings(user_id, **parsed)
-    
+
     labels = {
         "font": "🔤 גופן",
         "font_size": "📏 גודל גופן",
@@ -435,21 +429,21 @@ async def edit_import_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         "shadow_width": "👥 מרחק צל",
         "border_style": "🔳 סגנון גבול",
         "color": "🎨 צבע ראשי",
-        "outline_color": "🎨 צבע גבול/קופסה",
-        "bg_color": "🎨 צבע רקע/צל"
+        "outline_color": "🎨 צבע גבול",
+        "bg_color": "🎨 צבע צל/קופסה"
     }
-    
+
     lines = []
     for k, v in parsed.items():
         label = labels.get(k, k)
         if k == "is_bold":
             val_str = "מודגש (Bold)" if v == 1 else "רגיל"
         elif k == "border_style":
-            val_str = "צל + גבול" if v == 1 else "קופסה כהה"
+            val_str = "צל + גבול" if v == 1 else "קופסה אטומה"
         else:
             val_str = str(v)
         lines.append(f"- *{label}:* `{val_str}`")
-        
+
     await update.message.reply_text(
         f"✅ *ההגדרות יובאו ועודכנו בהצלחה!*\n\n" + "\n".join(lines),
         parse_mode="Markdown"
@@ -465,7 +459,7 @@ async def edit_outline_color_callback(update: Update, context: ContextTypes.DEFA
         return EDIT_OUTLINE_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     await update_user_settings(update.effective_user.id, outline_color=color)
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
@@ -481,9 +475,9 @@ async def edit_outline_color_custom(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("❌ קוד HEX לא תקין. הזן בפורמט #RRGGBB:")
         return EDIT_OUTLINE_COLOR_CUSTOM
     await update_user_settings(update.effective_user.id, outline_color=color)
-    
+
     color_image = create_color_image(color)
-    await query.message.reply_photo(
+    await update.message.reply_photo(
         photo=color_image,
         caption=f"✅ צבע גבול עודכן ל: `{color}`",
         parse_mode="Markdown"
@@ -497,7 +491,7 @@ async def edit_outline_width(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ הזן מספר שלם תקין בין 0 ל-10:")
         return EDIT_OUTLINE_WIDTH
     await update_user_settings(update.effective_user.id, outline_width=val)
-    await update.message.reply_text(f"✅ עובי גבול עודכן ל-{val} פיקסלים")
+    await update.message.reply_text(f"✅ עובי גבול / ריווח קופסה עודכן ל-{val} פיקסלים")
     return await submenu_styling_handler(update, context)
 
 
@@ -515,15 +509,15 @@ async def edit_bg_color_callback(update: Update, context: ContextTypes.DEFAULT_T
     query = update.callback_query
     await query.answer()
     if query.data == "color_custom":
-        await query.edit_message_text("✏️ הזן קוד צבע HEX עבור הרקע/הצל (למשל #000000):")
+        await query.edit_message_text("✏️ הזן קוד צבע HEX עבור הצל/הקופסה (למשל #000000):")
         return EDIT_BG_COLOR_CUSTOM
     color = query.data.replace("color_", "")
     await update_user_settings(update.effective_user.id, bg_color=color)
-    
+
     color_image = create_color_image(color)
     await query.message.reply_photo(
         photo=color_image,
-        caption=f"✅ צבע רקע עודכן ל: `{color}`",
+        caption=f"✅ צבע צל/קופסה עודכן ל: `{color}`",
         parse_mode="Markdown"
     )
     return await submenu_styling_handler(update, context)
@@ -535,11 +529,11 @@ async def edit_bg_color_custom(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("❌ קוד HEX לא תקין. הזן בפורמט #RRGGBB:")
         return EDIT_BG_COLOR_CUSTOM
     await update_user_settings(update.effective_user.id, bg_color=color)
-    
+
     color_image = create_color_image(color)
-    await query.message.reply_photo(
+    await update.message.reply_photo(
         photo=color_image,
-        caption=f"✅ צבע רקע עודכן ל: `{color}`",
+        caption=f"✅ צבע צל/קופסה עודכן ל: `{color}`",
         parse_mode="Markdown"
     )
     return await submenu_styling_handler(update, context)
