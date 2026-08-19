@@ -250,5 +250,69 @@ class MainRegressionTests(unittest.IsolatedAsyncioTestCase):
             query.answer.assert_awaited_once()
 
 
+class AdminCommandRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_promote_clears_ban_state(self):
+        import handlers.admin as admin
+
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(effective_user=SimpleNamespace(id=1), message=message)
+        context = SimpleNamespace(args=["123"], bot=SimpleNamespace(send_message=AsyncMock()))
+        target = SimpleNamespace(full_name="Target")
+        with patch.object(admin, "ADMIN_IDS", [1]), patch.object(
+            admin, "get_user", AsyncMock(return_value=target)
+        ), patch.object(admin, "update_user_settings", AsyncMock()) as update_settings:
+            await admin.promote_handler(update, context)
+            update_settings.assert_awaited_once_with(
+                123, is_admin=True, is_approved=True, is_banned=False
+            )
+
+    async def test_non_root_admin_cannot_ban_another_admin(self):
+        import handlers.admin as admin
+
+        message = SimpleNamespace(reply_text=AsyncMock())
+        update = SimpleNamespace(effective_user=SimpleNamespace(id=10), message=message)
+        context = SimpleNamespace(args=["20"], bot=SimpleNamespace(send_message=AsyncMock()))
+        target = SimpleNamespace(is_admin=True, full_name="Other admin")
+        with patch.object(admin, "ADMIN_IDS", []), patch.object(
+            admin, "_check_admin", AsyncMock(return_value=True)
+        ), patch.object(admin, "get_user", AsyncMock(return_value=target)), patch.object(
+            admin, "update_user_settings", AsyncMock()
+        ) as update_settings:
+            await admin.ban_handler(update, context)
+            update_settings.assert_not_awaited()
+
+
+class AdminPanelRegressionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stale_admin_conversation_rechecks_permission(self):
+        import handlers.admin_panel as panel
+
+        query = SimpleNamespace(answer=AsyncMock())
+        update = SimpleNamespace(
+            effective_user=SimpleNamespace(id=55),
+            callback_query=query,
+            message=None,
+        )
+        with patch.object(panel, "is_admin", AsyncMock(return_value=False)):
+            self.assertFalse(await panel._ensure_admin(update))
+            query.answer.assert_awaited_once()
+
+    async def test_reapproving_banned_user_clears_ban(self):
+        import handlers.admin_panel as panel
+
+        message = SimpleNamespace(text="123", reply_text=AsyncMock())
+        update = SimpleNamespace(
+            effective_user=SimpleNamespace(id=1),
+            callback_query=None,
+            message=message,
+        )
+        context = SimpleNamespace(bot=SimpleNamespace(send_message=AsyncMock()))
+        target = SimpleNamespace(is_admin=False, is_approved=False, is_banned=True)
+        with patch.object(panel, "_ensure_admin", AsyncMock(return_value=True)), patch.object(
+            panel, "get_user", AsyncMock(return_value=target)
+        ), patch.object(panel, "update_user_settings", AsyncMock()) as update_settings:
+            await panel.admin_add_user_id(update, context)
+            update_settings.assert_awaited_once_with(123, is_approved=True, is_banned=False)
+
+
 if __name__ == "__main__":
     unittest.main()
